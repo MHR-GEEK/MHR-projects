@@ -3,7 +3,6 @@ import argparse
 import json
 import os
 import re
-import uuid
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -16,11 +15,6 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 BRANDS_FILE = DATA_DIR / "brands.json"
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
-ANALYSIS_TIMEOUT_SECONDS = int(os.environ.get("ANALYSIS_TIMEOUT_SECONDS", "25"))
-CHAT_TIMEOUT_SECONDS = int(os.environ.get("CHAT_TIMEOUT_SECONDS", "12"))
-LAST_IMAGE_CONTEXTS = {}
-OWNER_NAME = "HARYX"
-OWNER_ROLE = "owner and developer"
 
 load_dotenv(BASE_DIR / ".env")
 
@@ -88,9 +82,6 @@ def fallback_result(message):
         "image_ratio_score": "-",
         "proportion_notes": [],
         "routine": [],
-        "care_plan": [],
-        "professional_summary": "",
-        "skin_information": [],
         "notes": message,
     }
 
@@ -98,29 +89,29 @@ def fallback_result(message):
 def build_analysis_prompt(brands):
     brand_text = ", ".join(brands) if brands else "No brands have been approved yet"
     return f"""
-You are an expert educational skincare advisor. Be practical, careful, and concise.
-Analyze only visible, non-sensitive skincare/photo qualities. Do not diagnose disease.
-Do not identify the person, infer protected traits, or promise results.
-Recommend only from this approved brand list: {brand_text}.
-Give skin-friendly advice a cautious human clinician might explain for everyday care.
+You are an educational skincare assistant, not a medical diagnostic tool.
+Analyze the uploaded face image only for visible, non-sensitive skincare observations.
+Do not identify the person, infer protected traits, diagnose disease, or promise results.
+Only recommend products from this admin-approved brand list: {brand_text}.
 
-Return compact strict JSON only:
+Return strict JSON with this schema:
 {{
   "skin_type": "one of: oily, dry, combination, normal, unclear",
-  "concerns": ["max 3 short visible skincare concerns, or unclear"],
+  "concerns": ["short visible skincare concerns, or unclear"],
   "sensitivity": "low, moderate, high, or unclear",
-  "psl_score": "1.0 to 10.0, or unclear",
-  "facial_rating": "low, average, above average, high, or unclear",
+  "psl_score": "subjective PSL-style visual harmony score from 1.0 to 10.0, or unclear",
+  "facial_rating": "brief subjective facial aesthetic rating such as low, average, above average, high, or unclear",
   "image_ratio_score": "visible facial proportion/photo ratio score from 1 to 100, or unclear",
-  "proportion_notes": ["max 3 brief notes about symmetry, lighting, angle, or photo quality"],
-  "professional_summary": "brief easy human explanation of the likely visible skin condition and overall care priority",
-  "skin_information": ["clear bullet points covering visible texture, tone, hydration/oiliness, sensitivity signs, and photo limitations"],
+  "proportion_notes": ["brief notes about visible symmetry, facial thirds, lighting, angle, and photo quality"],
   "routine": [
-    {{"step": "AM", "recommendation": "cleanser, moisturizer, sunscreen guidance"}},
-    {{"step": "PM", "recommendation": "cleanser, moisturizer, optional gentle treatment guidance"}}
+    {{"step": "AM cleanser", "recommendation": "brand-safe educational recommendation"}},
+    {{"step": "AM moisturizer", "recommendation": "brand-safe educational recommendation"}},
+    {{"step": "AM sunscreen", "recommendation": "brand-safe educational recommendation"}},
+    {{"step": "PM cleanser", "recommendation": "brand-safe educational recommendation"}},
+    {{"step": "PM treatment", "recommendation": "brand-safe educational recommendation"}},
+    {{"step": "PM moisturizer", "recommendation": "brand-safe educational recommendation"}}
   ],
-  "care_plan": ["2 to 4 specific skin-friendly practical tips"],
-  "notes": "one short note to see a dermatologist for painful, spreading, bleeding, infected, or persistent symptoms"
+  "notes": "brief educational disclaimer and when to see a dermatologist"
 }}
 """
 
@@ -150,11 +141,6 @@ def normalize_result(result, ai_available):
         if isinstance(result.get("proportion_notes"), list)
         else [],
         "routine": result.get("routine") if isinstance(result.get("routine"), list) else [],
-        "care_plan": result.get("care_plan") if isinstance(result.get("care_plan"), list) else [],
-        "professional_summary": result.get("professional_summary", ""),
-        "skin_information": result.get("skin_information")
-        if isinstance(result.get("skin_information"), list)
-        else [],
         "notes": result.get("notes", ""),
     }
 
@@ -195,7 +181,6 @@ def analyze_with_ollama(image_base64, brands):
                 "images": [image_base64],
             }
         ],
-        "options": {"temperature": 0.2, "num_predict": 360},
         "stream": False,
     }
     body = json.dumps(payload).encode("utf-8")
@@ -211,7 +196,7 @@ def analyze_with_ollama(image_base64, brands):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request_obj, timeout=ANALYSIS_TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(request_obj, timeout=120) as response:
             data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         error_text = exc.read().decode("utf-8", errors="replace")
@@ -227,38 +212,26 @@ def analyze_with_ollama(image_base64, brands):
     return parse_json_result(content)
 
 
-def chat_with_ollama(message, image_base64=None, analysis_context=None):
+def chat_with_ollama(message):
     base_url = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/api").rstrip("/")
     if not base_url.endswith("/api"):
         base_url = f"{base_url}/api"
     model = os.environ.get("OLLAMA_CHAT_MODEL", os.environ.get("OLLAMA_MODEL", "gemma3:12b"))
-    content = message
-    if analysis_context:
-        content = (
-            f"Latest educational image analysis context: {json.dumps(analysis_context, ensure_ascii=True)}\n"
-            f"User question: {message}"
-        )
-    user_message = {"role": "user", "content": content}
-    if image_base64:
-        user_message["images"] = [image_base64]
-
     payload = {
         "model": model,
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    f"This app was built by {OWNER_NAME}. {OWNER_NAME} is also the {OWNER_ROLE}. "
-                    f"If anyone asks who built, owns, created, developed, or maintains this app, answer exactly that. "
-                    "You are an expert educational skincare support assistant. If an image is available, "
-                    "use visible skincare/photo clues and the latest analysis context. Reply in 1 to 2 "
-                    "clear, practical sentences. Recommend gentle, skin-friendly steps. Do not diagnose. "
-                    "Tell users to see a dermatologist for painful, spreading, bleeding, infected, or persistent symptoms."
+                    "You are a very brief AI skincare assistant. Reply in 1 to 2 short sentences. "
+                    "Avoid long lists unless the user asks. Give educational skincare guidance, "
+                    "product routine help, and app usage help. Do not diagnose medical conditions. "
+                    "Tell users to see a dermatologist for urgent, painful, spreading, bleeding, "
+                    "infected, or persistent symptoms."
                 ),
             },
-            user_message,
+            {"role": "user", "content": message},
         ],
-        "options": {"temperature": 0.2, "num_predict": 150},
         "stream": False,
     }
     body = json.dumps(payload).encode("utf-8")
@@ -274,7 +247,7 @@ def chat_with_ollama(message, image_base64=None, analysis_context=None):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request_obj, timeout=CHAT_TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(request_obj, timeout=120) as response:
             data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         error_text = exc.read().decode("utf-8", errors="replace")
@@ -359,16 +332,6 @@ def analyze():
         return jsonify({"ok": False, "message": "Use PNG, JPG, JPEG, or WEBP"}), 400
 
     image_bytes = image.read()
-    image_base64 = image_bytes_to_base64(image_bytes)
-    context_id = session.get("context_id")
-    if not context_id:
-        context_id = uuid.uuid4().hex
-        session["context_id"] = context_id
-    LAST_IMAGE_CONTEXTS[context_id] = {
-        "image_base64": image_base64,
-        "analysis": None,
-    }
-
     provider = configured_provider()
     if not provider:
         return jsonify(
@@ -382,7 +345,7 @@ def analyze():
 
     try:
         if provider == "ollama":
-            result = analyze_with_ollama(image_base64, load_brands())
+            result = analyze_with_ollama(image_bytes_to_base64(image_bytes), load_brands())
         elif provider == "openai":
             mime_type = image.mimetype or "image/png"
             result = analyze_with_openai(image_bytes_to_data_url(image_bytes, mime_type), load_brands())
@@ -401,14 +364,12 @@ def analyze():
             }
         )
 
-    LAST_IMAGE_CONTEXTS[context_id]["analysis"] = result
     return jsonify({"ok": True, "result": result})
 
 
 @app.post("/chat")
 def chat():
-    payload = request.json or {}
-    message = payload.get("message", "").strip()
+    message = (request.json or {}).get("message", "").strip()
     if not message:
         return jsonify({"ok": False, "message": "Type a message first"}), 400
 
@@ -422,13 +383,7 @@ def chat():
         ), 400
 
     try:
-        context = LAST_IMAGE_CONTEXTS.get(session.get("context_id"), {})
-        request_image = payload.get("image_base64")
-        reply = chat_with_ollama(
-            message,
-            image_base64=request_image or context.get("image_base64"),
-            analysis_context=context.get("analysis"),
-        )
+        reply = chat_with_ollama(message)
     except Exception as exc:
         return jsonify({"ok": False, "message": f"Chat failed: {exc}"}), 500
 
