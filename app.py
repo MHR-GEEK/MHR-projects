@@ -23,6 +23,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "change-me-for-local-dev")
 
 
 def ensure_data_file():
+    """Ensure the data directory and brands file exist."""
     DATA_DIR.mkdir(exist_ok=True)
     if not BRANDS_FILE.exists():
         BRANDS_FILE.write_text(
@@ -41,21 +42,25 @@ def ensure_data_file():
 
 
 def load_brands():
+    """Load approved brands from the brands.json file."""
     ensure_data_file()
     return json.loads(BRANDS_FILE.read_text(encoding="utf-8"))
 
 
 def save_brands(brands):
+    """Save the list of approved brands to the brands.json file."""
     ensure_data_file()
     normalized = sorted({brand.strip() for brand in brands if brand.strip()})
     BRANDS_FILE.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
 
 
 def allowed_file(filename):
+    """Check if the file has an allowed extension."""
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 def image_to_data_url(file_storage):
+    """Convert a file storage object to a data URL."""
     mime_type = file_storage.mimetype or "image/png"
     image_bytes = file_storage.read()
     encoded = base64.b64encode(image_bytes).decode("ascii")
@@ -63,15 +68,18 @@ def image_to_data_url(file_storage):
 
 
 def image_bytes_to_data_url(image_bytes, mime_type):
+    """Convert image bytes to a data URL."""
     encoded = base64.b64encode(image_bytes).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
 
 
 def image_bytes_to_base64(image_bytes):
+    """Convert image bytes to a base64 string."""
     return base64.b64encode(image_bytes).decode("ascii")
 
 
 def fallback_result(message):
+    """Return a fallback result when AI is not available."""
     return {
         "ai_available": False,
         "skin_type": "-",
@@ -87,6 +95,7 @@ def fallback_result(message):
 
 
 def build_analysis_prompt(brands):
+    """Build the prompt for AI analysis based on approved brands."""
     brand_text = ", ".join(brands) if brands else "No brands have been approved yet"
     return f"""
 You are an educational skincare assistant, not a medical diagnostic tool.
@@ -117,6 +126,7 @@ Return strict JSON with this schema:
 
 
 def parse_json_result(raw_text):
+    """Parse the raw JSON result from the AI service."""
     cleaned = raw_text.strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
@@ -129,6 +139,7 @@ def parse_json_result(raw_text):
 
 
 def normalize_result(result, ai_available):
+    """Normalize the result to a consistent format."""
     return {
         "ai_available": ai_available,
         "skin_type": result.get("skin_type", "-"),
@@ -146,6 +157,7 @@ def normalize_result(result, ai_available):
 
 
 def analyze_with_openai(image_data_url, brands):
+    """Analyze the image using OpenAI."""
     from openai import OpenAI
 
     client = OpenAI()
@@ -167,6 +179,7 @@ def analyze_with_openai(image_data_url, brands):
 
 
 def analyze_with_ollama(image_base64, brands):
+    """Analyze the image using Ollama."""
     base_url = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/api").rstrip("/")
     if not base_url.endswith("/api"):
         base_url = f"{base_url}/api"
@@ -213,6 +226,7 @@ def analyze_with_ollama(image_base64, brands):
 
 
 def chat_with_ollama(message):
+    """Send a message to the Ollama chat model and return the response."""
     base_url = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/api").rstrip("/")
     if not base_url.endswith("/api"):
         base_url = f"{base_url}/api"
@@ -262,6 +276,7 @@ def chat_with_ollama(message):
 
 
 def configured_provider():
+    """Determine the configured AI provider."""
     provider = os.environ.get("AI_PROVIDER", "").strip().lower()
     if provider:
         return provider
@@ -273,6 +288,7 @@ def configured_provider():
 
 
 def ai_status_label():
+    """Return the AI status label based on the configured provider."""
     provider = configured_provider()
     if provider == "ollama":
         return "AI ready"
@@ -283,6 +299,7 @@ def ai_status_label():
 
 @app.get("/")
 def index():
+    """Render the main index page."""
     return render_template(
         "index.html",
         brands=load_brands(),
@@ -293,6 +310,7 @@ def index():
 
 @app.post("/admin/login")
 def admin_login():
+    """Admin login endpoint."""
     password = request.json.get("password", "")
     expected = os.environ.get("ADMIN_PASSWORD", "admin123")
     if password != expected:
@@ -303,21 +321,26 @@ def admin_login():
 
 @app.post("/admin/brands")
 def add_brand():
+    """Add a new brand to the approved list."""
     if not session.get("admin"):
         return jsonify({"ok": False, "message": "Admin login required"}), 403
     brand = request.json.get("brand", "").strip()
     if not brand:
-        return jsonify({"ok": False, "message": "Brand name is required"}), 400
+        return jsonify({"ok": False, "message": "Brand name is required"}), 4
     brands = load_brands()
     brands.append(brand)
     save_brands(brands)
     return jsonify({"ok": True, "brands": load_brands()})
 
 
-@app.delete("/admin/brands/<brand>")
-def delete_brand(brand):
+@app.delete("/admin/brands/")
+def delete_brand():
+    """Delete a brand from the approved list."""
     if not session.get("admin"):
         return jsonify({"ok": False, "message": "Admin login required"}), 403
+    brand = request.args.get("brand", "").strip()
+    if not brand:
+        return jsonify({"ok": False, "message": "Brand name is required"}), 400
     brands = [item for item in load_brands() if item.lower() != brand.lower()]
     save_brands(brands)
     return jsonify({"ok": True, "brands": load_brands()})
@@ -325,6 +348,7 @@ def delete_brand(brand):
 
 @app.post("/analyze")
 def analyze():
+    """Analyze the uploaded image using the configured AI provider."""
     image = request.files.get("image")
     if not image or image.filename == "":
         return jsonify({"ok": False, "message": "Upload a face image first"}), 400
@@ -369,6 +393,7 @@ def analyze():
 
 @app.post("/chat")
 def chat():
+    """Chat with the AI using the configured provider."""
     message = (request.json or {}).get("message", "").strip()
     if not message:
         return jsonify({"ok": False, "message": "Type a message first"}), 400
