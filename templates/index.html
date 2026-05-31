@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Dermatology Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  </head>
+  <body>
+    <div class="welcome-screen" id="welcome-screen" aria-label="Welcome">
+      <div class="welcome-card">
+        <span class="doodle-face" aria-hidden="true">
+          <i></i>
+          <b></b>
+        </span>
+        <p class="eyebrow">Welcome</p>
+        <h2>Hi, I am your skin guide</h2>
+        <p>Preparing your AI Derma workspace.</p>
+      </div>
+    </div>
+
+    <canvas id="ambient-canvas" aria-hidden="true"></canvas>
+    <div class="scroll-meter" aria-hidden="true"><span id="scroll-progress"></span></div>
+
+    <header class="topbar">
+      <a class="brand-mark" href="#workspace" aria-label="AI Dermatology Assistant home">
+        <span class="mark-core"></span>
+        <span>AI Derma</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="#workspace">Analyze</a>
+        <a href="#insights">Insights</a>
+        <a href="#assistant">Assistant</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <div class="status-pill {{ 'is-ready' if ai_configured else 'is-missing' }}">
+        <span></span>{{ ai_status }}
+      </div>
+    </header>
+
+    <main>
+      <section id="workspace" class="hero-grid">
+        <div class="hero-copy reveal">
+          <div class="doodle-greeter" aria-label="Friendly greeting">
+            <span class="doodle-face" aria-hidden="true">
+              <i></i>
+              <b></b>
+            </span>
+            <p>Hi, upload a clear face photo and I will help explain the visible skincare clues.</p>
+          </div>
+          <p class="eyebrow">Educational skincare intelligence</p>
+          <h1>AI Dermatology Assistant</h1>
+          <p class="hero-lede">
+            Upload a facial image for measured skincare guidance, practical care steps, and an image-aware assistant that can continue the conversation.
+          </p>
+          <div class="hero-actions">
+            <a class="primary-action" href="#scanner">Start analysis</a>
+            <button class="ghost-action" type="button" data-open-chat>Ask assistant</button>
+          </div>
+        </div>
+
+        <section id="scanner" class="scanner-panel reveal" aria-labelledby="scanner-title">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Vision scan</p>
+              <h2 id="scanner-title">Face image analyzer</h2>
+            </div>
+            <span class="file-chip" id="file-chip">No image</span>
+          </div>
+
+          <form id="analyze-form" class="upload-zone" enctype="multipart/form-data">
+            <input id="image-input" name="image" type="file" accept="image/png,image/jpeg,image/webp" required>
+            <label for="image-input" id="drop-zone">
+              <span class="scan-ring"></span>
+              <span class="upload-title">Drop a face image here</span>
+              <span class="upload-meta">PNG, JPG, JPEG, or WEBP. Images are compressed before upload for speed.</span>
+            </label>
+            <div class="preview-shell" id="preview-shell" hidden>
+              <img id="preview-image" alt="Selected face preview">
+              <div class="preview-scan" aria-hidden="true"></div>
+              <button class="change-image" id="change-image" type="button">Change image</button>
+            </div>
+            <button class="analyze-button" type="submit">
+              <span>Run AI scan</span>
+              <b aria-hidden="true"></b>
+            </button>
+          </form>
+        </section>
+      </section>
+
+      <section id="insights" class="results-band">
+        <div class="section-title reveal">
+          <p class="eyebrow">Live output</p>
+          <h2>Analysis console</h2>
+        </div>
+
+        <div class="results-grid">
+          <article class="metric-card reveal">
+            <span>Skin type</span>
+            <strong id="skin-type">Waiting</strong>
+          </article>
+          <article class="metric-card reveal">
+            <span>Sensitivity</span>
+            <strong id="sensitivity">Waiting</strong>
+          </article>
+          <article class="metric-card reveal">
+            <span>Harmony</span>
+            <strong id="psl-score">Waiting</strong>
+          </article>
+          <article class="metric-card reveal">
+            <span>Photo ratio</span>
+            <strong id="ratio-score">Waiting</strong>
+          </article>
+        </div>
+
+        <div class="analysis-layout">
+          <article class="insight-panel wide reveal">
+            <div class="panel-heading compact">
+              <h3>Professional overview</h3>
+              <span class="mini-orbit"></span>
+            </div>
+            <p id="professional-summary" class="analysis-notes">A clear human-readable skin overview will appear after a scan.</p>
+          </article>
+
+          <article class="insight-panel reveal">
+            <div class="panel-heading compact">
+              <h3>Skin information</h3>
+              <span class="mini-orbit"></span>
+            </div>
+            <ul id="skin-info-list" class="note-list">
+              <li class="muted">Texture, tone, hydration, and visible limits will appear here.</li>
+            </ul>
+          </article>
+
+          <article class="insight-panel reveal">
+            <div class="panel-heading compact">
+              <h3>Visible concerns</h3>
+              <span class="mini-orbit"></span>
+            </div>
+            <div id="concerns-list" class="tag-cloud">
+              <span class="muted">Results will appear after a scan.</span>
+            </div>
+          </article>
+
+          <article class="insight-panel reveal">
+            <div class="panel-heading compact">
+              <h3>Routine path</h3>
+              <span class="mini-orbit"></span>
+            </div>
+            <ol id="routine-list" class="routine-list">
+              <li class="muted">No routine generated yet.</li>
+            </ol>
+          </article>
+
+          <article class="insight-panel reveal">
+            <div class="panel-heading compact">
+              <h3>Care advice</h3>
+              <span class="mini-orbit"></span>
+            </div>
+            <ul id="care-plan-list" class="note-list">
+              <li class="muted">Skin-friendly advice will appear after a scan.</li>
+            </ul>
+          </article>
+
+          <article class="insight-panel wide reveal">
+            <div class="panel-heading compact">
+              <h3>Photo and proportion notes</h3>
+              <span class="mini-orbit"></span>
+            </div>
+            <ul id="proportion-list" class="note-list">
+              <li class="muted">Lighting, angle, and proportion notes will load here.</li>
+            </ul>
+            <p id="analysis-notes" class="analysis-notes"></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="contact" class="contact-section">
+        <div class="section-title reveal">
+          <p class="eyebrow">Developer contact</p>
+          <h2>Support and updates</h2>
+        </div>
+
+        <div class="contact-grid reveal">
+          <a class="contact-card" href="https://www.instagram.com/md_haris_raza_" target="_blank" rel="noreferrer">
+            <span>Instagram</span>
+            <strong>@md_haris_raza_</strong>
+          </a>
+          <a class="contact-card" href="#" id="support-desk-link">
+            <span>Support desk</span>
+            <strong>Open support desk</strong>
+          </a>
+          <a class="contact-card" href="https://github.com/MHR-GEEK" target="_blank" rel="noreferrer">
+            <span>Owner and developer</span>
+            <strong>HARYX</strong>
+          </a>
+        </div>
+      </section>
+
+      <section id="assistant" class="assistant-band">
+        <div class="assistant-copy reveal">
+          <p class="eyebrow">Quick guidance</p>
+          <h2>Ask the skincare assistant</h2>
+          <p>After a scan, the assistant can use the uploaded image and latest results to answer follow-up skincare questions.</p>
+        </div>
+        <button class="chat-launch reveal" type="button" data-open-chat>Open assistant</button>
+      </section>
+    </main>
+
+    <aside class="chat-drawer" id="chat-drawer" aria-hidden="true" aria-label="Skincare assistant">
+      <div class="chat-panel">
+        <div class="panel-heading compact">
+          <div>
+            <p class="eyebrow">Assistant</p>
+            <h2>Skin chat</h2>
+          </div>
+          <button class="icon-button" id="close-chat" type="button" aria-label="Close chat">x</button>
+        </div>
+        <div class="chat-log" id="chat-log">
+          <p class="bot-message">Upload and scan an image, then ask a follow-up skincare question.</p>
+        </div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" type="text" placeholder="Type a question" autocomplete="off">
+          <button type="submit">Send</button>
+        </form>
+      </div>
+    </aside>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  </body>
+</html>
