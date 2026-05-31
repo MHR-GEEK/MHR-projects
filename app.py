@@ -1,3 +1,4 @@
+````python
 import base64
 import argparse
 import json
@@ -23,6 +24,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "change-me-for-local-dev")
 
 def ensure_data_file():
     DATA_DIR.mkdir(exist_ok=True)
+
     if not BRANDS_FILE.exists():
         BRANDS_FILE.write_text(
             json.dumps(
@@ -73,7 +75,9 @@ def fallback_result(message):
         "facial_rating": "-",
         "image_ratio_score": "-",
         "proportion_notes": [],
+        "skin_information": [],
         "routine": [],
+        "care_plan": [],
         "notes": message,
     }
 
@@ -122,6 +126,7 @@ def parse_json_result(raw_text):
         cleaned = re.sub(r"\s*```$", "", cleaned)
 
     match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+
     if match:
         cleaned = match.group(0)
 
@@ -131,10 +136,15 @@ def parse_json_result(raw_text):
 
 def normalize_result(result, ai_available):
     concerns = result.get("concerns")
+
     if not isinstance(concerns, list) or not concerns:
-        concerns = ["visible skin texture", "general skincare monitoring"]
+        concerns = [
+            "visible skin texture",
+            "general skincare monitoring",
+        ]
 
     proportion_notes = result.get("proportion_notes")
+
     if not isinstance(proportion_notes, list) or not proportion_notes:
         proportion_notes = [
             "Visible facial structure reviewed.",
@@ -143,6 +153,7 @@ def normalize_result(result, ai_available):
         ]
 
     routine = result.get("routine")
+
     if not isinstance(routine, list) or not routine:
         routine = [
             {"step": "AM cleanser", "recommendation": "Use a gentle cleanser."},
@@ -166,7 +177,9 @@ def normalize_result(result, ai_available):
         "facial_rating": result.get("facial_rating") or "average",
         "image_ratio_score": result.get("image_ratio_score") or "70",
         "proportion_notes": proportion_notes,
+        "skin_information": proportion_notes,
         "routine": routine,
+        "care_plan": [notes],
         "notes": notes,
     }
 
@@ -196,6 +209,7 @@ def analyze_with_openai(image_data_url, brands):
 
 def analyze_with_ollama(image_base64, brands):
     base_url = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/api").rstrip("/")
+
     if not base_url.endswith("/api"):
         base_url = f"{base_url}/api"
 
@@ -205,7 +219,11 @@ def analyze_with_ollama(image_base64, brands):
     payload = {
         "model": model,
         "messages": [
-            {"role": "user", "content": prompt, "images": [image_base64]}
+            {
+                "role": "user",
+                "content": prompt,
+                "images": [image_base64],
+            }
         ],
         "stream": False,
     }
@@ -256,17 +274,24 @@ def analyze():
     image = request.files.get("image")
 
     if not image or image.filename == "":
-        return jsonify({"ok": False, "message": "Upload a face image first"}), 400
+        return jsonify(
+            {"ok": False, "message": "Upload a face image first"}
+        ), 400
 
     if not allowed_file(image.filename):
-        return jsonify({"ok": False, "message": "Use PNG/JPG/WEBP"}), 400
+        return jsonify(
+            {"ok": False, "message": "Use PNG/JPG/WEBP"}
+        ), 400
 
     image_bytes = image.read()
     provider = configured_provider()
 
     if not provider:
         return jsonify(
-            {"ok": True, "result": fallback_result("AI not configured")}
+            {
+                "ok": True,
+                "result": fallback_result("AI not configured"),
+            }
         )
 
     try:
@@ -286,10 +311,18 @@ def analyze():
 
     except Exception as exc:
         return jsonify(
-            {"ok": True, "result": fallback_result(f"AI failed: {exc}")}
+            {
+                "ok": True,
+                "result": fallback_result(f"AI failed: {exc}"),
+            }
         )
 
-    return jsonify({"ok": True, "result": result})
+    return jsonify(
+        {
+            "ok": True,
+            "result": result,
+        }
+    )
 
 
 if __name__ == "__main__":
@@ -304,3 +337,4 @@ if __name__ == "__main__":
         port=args.port,
         debug=True,
     )
+````
